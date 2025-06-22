@@ -432,7 +432,7 @@ class RecommenderDashboard:
                 models = st.multiselect(
                     "Modelos",
                     ["global_mean", "popularity_count", "popularity_rating", 
-                     "knn_user", "knn_item", "svd", "als", "lightfm"],
+                     "knn_user", "knn_item", "svd", "als"],
                     default=["global_mean", "popularity_count"]
                 )
             

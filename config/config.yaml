@@ -77,13 +77,6 @@ models:
       regularization: 0.01
       iterations: 15
       alpha: 1.0
-    
-    # LightFM
-    lightfm:
-      no_components: 30
-      learning_rate: 0.05
-      loss: 'warp'  # 'warp', 'bpr', 'warp-kos'
-      epochs: 30
 
 # Configurações de experimentos
 experiments:
