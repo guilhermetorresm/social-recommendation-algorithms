@@ -155,7 +155,6 @@ logs/
 *.log
 
 # Model files
-models/
 *.model
 *.pth
 *.pt
