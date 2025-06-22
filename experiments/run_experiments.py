@@ -38,6 +38,7 @@ class ExperimentRunner:
             config_path: Caminho para arquivo de configuração
         """
         self.config = Config(config_path)
+        print("Configuração de métricas:", self.config.get('evaluation.metrics'))
         self.logger = Logger('experiment_runner')
         self.result_manager = ResultManager(self.config.get('data.results_path'))
         self.evaluator = Evaluator(self.config.get('evaluation.metrics'))
