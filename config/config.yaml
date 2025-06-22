@@ -1,0 +1,154 @@
+# config/config.yaml
+# Arquivo de configuração principal do sistema de recomendação
+
+# Configurações de dados
+data:
+  raw_path: 'data/raw'
+  processed_path: 'data/processed'
+  results_path: 'data/results'
+  default_dataset: 'movielens-100k'
+  
+  # Pré-processamento
+  preprocessing:
+    min_user_ratings: 5
+    min_item_ratings: 5
+    normalize_ratings: false
+
+# Configurações de avaliação
+evaluation:
+  train_test_split: 0.8
+  random_seed: 42
+  split_method: 'random'  # 'random', 'temporal', 'user_based'
+  
+  # Métricas a calcular
+  metrics:
+    rating_prediction:
+      - 'rmse'
+      - 'mae'
+    ranking:
+      - 'precision_at_k'
+      - 'recall_at_k'
+      - 'ndcg_at_k'
+      - 'map_at_k'
+    beyond_accuracy:
+      - 'coverage'
+      - 'diversity'
+      - 'novelty'
+    k_values:
+      - 5
+      - 10
+      - 20
+
+# Parâmetros padrão dos modelos
+models:
+  default_params:
+    # Baseline
+    global_mean: {}
+    
+    popularity:
+      popularity_metric: 'mean_rating'  # 'rating_count' ou 'mean_rating'
+    
+    # KNN
+    knn:
+      k: 40
+      min_k: 1
+      sim_metric: 'cosine'  # 'cosine', 'msd', 'pearson'
+    
+    knn_user:
+      k: 40
+      min_k: 1
+      sim_metric: 'cosine'
+    
+    knn_item:
+      k: 40
+      min_k: 1
+      sim_metric: 'cosine'
+    
+    # SVD
+    svd:
+      n_factors: 100
+      n_epochs: 20
+      lr_all: 0.005
+      reg_all: 0.02
+    
+    # ALS (para dados implícitos)
+    als:
+      factors: 100
+      regularization: 0.01
+      iterations: 15
+      alpha: 1.0
+    
+    # LightFM
+    lightfm:
+      no_components: 30
+      learning_rate: 0.05
+      loss: 'warp'  # 'warp', 'bpr', 'warp-kos'
+      epochs: 30
+
+# Configurações de experimentos
+experiments:
+  # Número de usuários para avaliar métricas além da acurácia
+  n_users_sample_beyond_accuracy: 100
+  
+  # Salvamento de resultados
+  save_predictions: false
+  save_recommendations: true
+  save_models: true
+  
+  # Paralelização
+  n_jobs: -1  # -1 para usar todos os cores
+
+# Configurações de logging
+logging:
+  level: 'INFO'  # 'DEBUG', 'INFO', 'WARNING', 'ERROR'
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  log_to_file: true
+  log_dir: 'logs'
+
+# Configurações do dashboard
+dashboard:
+  port: 8501
+  theme: 'light'  # 'light' ou 'dark'
+  max_upload_size: 200  # MB
+  enable_wide_mode: true
+
+# Datasets disponíveis
+datasets:
+  movielens-100k:
+    url: 'https://files.grouplens.org/datasets/movielens/ml-latest-small.zip'
+    type: 'explicit'
+    scale: [1, 5]
+    
+  movielens-1m:
+    url: 'https://files.grouplens.org/datasets/movielens/ml-1m.zip'
+    type: 'explicit'
+    scale: [1, 5]
+    
+  lastfm:
+    url: 'http://files.grouplens.org/datasets/hetrec2011/hetrec2011-lastfm-2k.zip'
+    type: 'implicit'
+    scale: null
+    
+  book-crossing:
+    url: 'http://www2.informatik.uni-freiburg.de/~cziegler/BX/BX-CSV-Dump.zip'
+    type: 'explicit'
+    scale: [1, 10]
+
+# Otimização de hiperparâmetros
+hyperparameter_tuning:
+  enabled: false
+  method: 'grid_search'  # 'grid_search', 'random_search', 'bayesian'
+  n_iter: 20  # Para random_search
+  cv_folds: 5
+  
+  # Espaços de busca por modelo
+  search_spaces:
+    knn:
+      k: [10, 20, 30, 40, 50]
+      sim_metric: ['cosine', 'pearson']
+    
+    svd:
+      n_factors: [50, 100, 150]
+      n_epochs: [10, 20, 30]
+      lr_all: [0.002, 0.005, 0.01]
+      reg_all: [0.01, 0.02, 0.05]
