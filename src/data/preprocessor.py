@@ -1,5 +1,9 @@
 # src/data/preprocessor.py
 
+import os
+import pandas as pd
+from typing import Tuple, Optional, Dict, Any
+
 class DataPreprocessor:
     """Pré-processador de dados para sistemas de recomendação."""
     
