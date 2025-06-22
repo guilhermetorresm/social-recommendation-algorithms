@@ -136,6 +136,35 @@ ENV/
 env.bak/
 venv.bak/
 
+# Data
+data/raw/
+data/processed/
+data/results/
+*.csv
+*.zip
+*.tar.gz
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.h5
+*.hdf5
+
+# Logs
+logs/
+*.log
+
+# Model files
+models/
+*.model
+*.pth
+*.pt
+*.ckpt
+
+# Config files with sensitive data
+config/local_config.yaml
+config/secret_config.yaml
+
 # Spyder project settings
 .spyderproject
 .spyproject
