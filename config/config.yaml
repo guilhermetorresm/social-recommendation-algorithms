@@ -18,7 +18,7 @@ data:
 evaluation:
   train_test_split: 0.8
   random_seed: 42
-  split_method: 'random'  # 'random', 'temporal', 'user_based'
+  split_method: 'temporal'  # 'random', 'temporal', 'user_based'
   
   # Métricas a calcular
   metrics:
@@ -51,18 +51,18 @@ models:
     # KNN
     knn:
       k: 40
-      min_k: 1
+      min_k: 3
       sim_metric: 'cosine'  # 'cosine', 'msd', 'pearson'
     
     knn_user:
       k: 40
-      min_k: 1
-      sim_metric: 'cosine'
+      min_k: 3
+      sim_metric: 'msd'
     
     knn_item:
       k: 40
-      min_k: 1
-      sim_metric: 'cosine'
+      min_k: 3
+      sim_metric: 'msd'
     
     # SVD
     svd:
@@ -101,7 +101,7 @@ logging:
 # Configurações do dashboard
 dashboard:
   port: 8501
-  theme: 'light'  # 'light' ou 'dark'
+  theme: 'dark'  # 'light' ou 'dark'
   max_upload_size: 200  # MB
   enable_wide_mode: true
 
