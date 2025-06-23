@@ -283,3 +283,205 @@ class Metrics:
                 dissimilarities.append(dissimilarity)
         
         return np.mean(dissimilarities) if dissimilarities else 0.0
+    
+    @staticmethod
+    def intra_list_diversity_enhanced(recommendations: List[int], 
+                                    item_features: Optional[Dict[int, Dict[str, any]]] = None,
+                                    feature_weights: Optional[Dict[str, float]] = None) -> float:
+        """
+        Diversidade intra-lista melhorada usando features dos itens.
+        
+        Args:
+            recommendations: Lista de itens recomendados
+            item_features: Dict {item_id: {feature_name: feature_value}}
+            feature_weights: Pesos para diferentes features
+            
+        Returns:
+            float: Diversidade (0 = itens idênticos, 1 = máxima diversidade)
+        """
+        if len(recommendations) < 2:
+            return 0.0
+        
+        if item_features is None:
+            # Fallback: considera apenas itens únicos
+            return len(set(recommendations)) / len(recommendations)
+        
+        feature_weights = feature_weights or {}
+        dissimilarities = []
+        
+        for i in range(len(recommendations)):
+            for j in range(i + 1, len(recommendations)):
+                item_i = recommendations[i]
+                item_j = recommendations[j]
+                
+                if item_i in item_features and item_j in item_features:
+                    dissim = Metrics._calculate_item_dissimilarity(
+                        item_features[item_i], 
+                        item_features[item_j],
+                        feature_weights
+                    )
+                    dissimilarities.append(dissim)
+        
+        return np.mean(dissimilarities) if dissimilarities else 0.0
+    
+    @staticmethod
+    def _calculate_item_dissimilarity(features_i: Dict[str, any], 
+                                    features_j: Dict[str, any],
+                                    weights: Dict[str, float]) -> float:
+        """Calcula dissimilaridade entre dois itens baseada em suas features."""
+        total_dissim = 0.0
+        total_weight = 0.0
+        
+        for feature in features_i.keys():
+            if feature in features_j:
+                weight = weights.get(feature, 1.0)
+                
+                # Categorical features
+                if isinstance(features_i[feature], (str, list, set)):
+                    if isinstance(features_i[feature], str):
+                        sim = 1.0 if features_i[feature] == features_j[feature] else 0.0
+                    else:  # list/set
+                        set_i = set(features_i[feature]) if isinstance(features_i[feature], list) else features_i[feature]
+                        set_j = set(features_j[feature]) if isinstance(features_j[feature], list) else features_j[feature]
+                        # Jaccard similarity
+                        intersection = len(set_i & set_j)
+                        union = len(set_i | set_j)
+                        sim = intersection / union if union > 0 else 0.0
+                
+                # Numerical features
+                elif isinstance(features_i[feature], (int, float)):
+                    # Normalized absolute difference
+                    diff = abs(features_i[feature] - features_j[feature])
+                    max_val = max(abs(features_i[feature]), abs(features_j[feature]))
+                    sim = 1 - (diff / max_val) if max_val > 0 else 1.0
+                
+                else:
+                    sim = 1.0 if features_i[feature] == features_j[feature] else 0.0
+                
+                dissim = 1 - sim
+                total_dissim += dissim * weight
+                total_weight += weight
+        
+        return total_dissim / total_weight if total_weight > 0 else 0.0
+    
+    @staticmethod
+    def serendipity(recommendations_dict: Dict[int, List[int]],
+                   user_profiles: Dict[int, List[int]],
+                   item_features: Optional[Dict[int, Dict[str, any]]] = None,
+                   relevance_dict: Optional[Dict[int, List[int]]] = None,
+                   novelty_threshold: float = 0.5) -> float:
+        """
+        Serendipidade: recomendações inesperadas mas relevantes.
+        
+        Args:
+            recommendations_dict: {user_id: [recommended_items]}
+            user_profiles: {user_id: [historical_items]}
+            item_features: Features dos itens para calcular dissimilaridade
+            relevance_dict: {user_id: [relevant_items]} para filtrar apenas relevantes
+            novelty_threshold: Threshold para considerar um item como "inesperado"
+            
+        Returns:
+            float: Serendipidade média
+        """
+        serendipity_scores = []
+        
+        for user_id, recommended in recommendations_dict.items():
+            if user_id not in user_profiles:
+                continue
+            
+            user_history = user_profiles[user_id]
+            relevant_items = relevance_dict.get(user_id, recommended) if relevance_dict else recommended
+            
+            user_serendipity = 0.0
+            valid_recs = 0
+            
+            for item in recommended:
+                # Só considera itens relevantes
+                if item not in relevant_items:
+                    continue
+                
+                # Calcula "inesperabilidade" do item
+                unexpectedness = Metrics._calculate_unexpectedness(
+                    item, user_history, item_features
+                )
+                
+                # Item é serendipitoso se for inesperado mas relevante
+                if unexpectedness >= novelty_threshold:
+                    user_serendipity += unexpectedness
+                
+                valid_recs += 1
+            
+            if valid_recs > 0:
+                serendipity_scores.append(user_serendipity / valid_recs)
+        
+        return np.mean(serendipity_scores) if serendipity_scores else 0.0
+    
+    @staticmethod
+    def _calculate_unexpectedness(item: int, 
+                                user_history: List[int],
+                                item_features: Optional[Dict[int, Dict[str, any]]] = None) -> float:
+        """
+        Calcula o quão inesperado um item é baseado no histórico do usuário.
+        """
+        if not user_history or item_features is None:
+            return 1.0  # Assume máxima inesperabilidade se não há dados
+        
+        if item not in item_features:
+            return 1.0
+        
+        # Calcula dissimilaridade média com itens do histórico
+        dissimilarities = []
+        
+        for hist_item in user_history:
+            if hist_item in item_features:
+                dissim = Metrics._calculate_item_dissimilarity(
+                    item_features[item], 
+                    item_features[hist_item],
+                    {}  # Sem pesos específicos
+                )
+                dissimilarities.append(dissim)
+        
+        # Inesperabilidade = quão diferente é dos itens consumidos
+        return np.mean(dissimilarities) if dissimilarities else 1.0
+    
+    @staticmethod
+    def diversity_coverage(recommendations_dict: Dict[int, List[int]],
+                          item_features: Dict[int, Dict[str, any]],
+                          feature_name: str) -> float:
+        """
+        Cobertura de diversidade: quantas categorias diferentes são cobertas.
+        
+        Args:
+            recommendations_dict: Recomendações por usuário
+            item_features: Features dos itens
+            feature_name: Nome da feature para medir diversidade (ex: 'genre')
+            
+        Returns:
+            float: Proporção de categorias cobertas
+        """
+        all_categories = set()
+        recommended_categories = set()
+        
+        # Coleta todas as categorias possíveis
+        for item_id, features in item_features.items():
+            if feature_name in features:
+                feature_val = features[feature_name]
+                if isinstance(feature_val, (list, set)):
+                    all_categories.update(feature_val)
+                else:
+                    all_categories.add(feature_val)
+        
+        # Coleta categorias recomendadas
+        for recommended in recommendations_dict.values():
+            for item in recommended:
+                if item in item_features and feature_name in item_features[item]:
+                    feature_val = item_features[item][feature_name]
+                    if isinstance(feature_val, (list, set)):
+                        recommended_categories.update(feature_val)
+                    else:
+                        recommended_categories.add(feature_val)
+        
+        if len(all_categories) == 0:
+            return 0.0
+        
+        return len(recommended_categories) / len(all_categories)

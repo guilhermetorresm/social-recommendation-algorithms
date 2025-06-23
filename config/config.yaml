@@ -35,6 +35,22 @@ evaluation:
       - 'intra_list_diversity'
       - 'novelty'
       - 'personalization'
+      - 'serendipity'
+    
+    # Configurações para as novas métricas
+    diversity_config:
+      feature_weights:
+        genre: 1.0
+        year: 0.5
+        director: 0.8
+      novelty_threshold: 0.5  # Para serendipidade
+    
+    # Arquivos de features por dataset
+    features_files:
+      movielens-100k: 'data/processed/movies_features.csv'
+      movielens-1m: 'data/processed/movies_features.csv'
+      lastfm: 'data/processed/art'
+
     k_values:
       - 5
       - 10
@@ -56,13 +72,13 @@ models:
       sim_metric: 'cosine'  # 'cosine', 'msd', 'pearson'
     
     knn_user:
-      k: 40
-      min_k: 3
+      k: 20
+      min_k: 5
       sim_metric: 'msd'
     
     knn_item:
       k: 40
-      min_k: 3
+      min_k: 1
       sim_metric: 'msd'
     
     # SVD

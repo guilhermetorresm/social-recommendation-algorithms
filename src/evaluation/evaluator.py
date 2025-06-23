@@ -1,5 +1,6 @@
 # src/evaluation/evaluator.py - Versão Corrigida
 
+import os
 from typing import Dict, List, Any, Optional, Tuple, Union
 import pandas as pd
 import numpy as np
@@ -267,6 +268,55 @@ class Evaluator:
         
         results['evaluated_users'] = len(recommendations_dict)
         results['failed_users'] = failed_users
+
+        # Diversidade intra-lista melhorada
+        if 'intra_list_diversity' in self.metrics_config['beyond_accuracy']:
+            item_features = getattr(model, 'item_features', None)
+            if item_features:
+                diversity_scores = []
+                for recommended in recommendations_dict.values():
+                    diversity = self.metrics.intra_list_diversity_enhanced(
+                        recommended, item_features
+                    )
+                    diversity_scores.append(diversity)
+                results['intra_list_diversity'] = np.mean(diversity_scores) if diversity_scores else 0.0
+            else:
+                # Fallback para método original
+                diversity_scores = []
+                for recommended in recommendations_dict.values():
+                    diversity = len(set(recommended)) / len(recommended) if recommended else 0.0
+                    diversity_scores.append(diversity)
+                results['intra_list_diversity'] = np.mean(diversity_scores)
+
+        # Serendipidade
+        if 'serendipity' in self.metrics_config['beyond_accuracy']:
+            # Precisa do histórico dos usuários (dados de treino por usuário)
+            user_profiles = train_data.groupby('user_id')['item_id'].apply(list).to_dict()
+            
+            # Filtra apenas usuários da amostra
+            sample_user_profiles = {uid: user_profiles.get(uid, []) 
+                                  for uid in recommendations_dict.keys() 
+                                  if uid in user_profiles}
+            
+            item_features = getattr(model, 'item_features', None)
+            
+            results['serendipity'] = self.metrics.serendipity(
+                recommendations_dict,
+                sample_user_profiles,
+                item_features
+            )
+
+        # Cobertura de diversidade (exemplo com gêneros)
+        if hasattr(model, 'item_features') and model.item_features:
+            # Tenta encontrar features categóricas comuns
+            sample_features = next(iter(model.item_features.values()))
+            for feature_name in ['genre', 'category', 'type', 'class']:
+                if feature_name in sample_features:
+                    coverage = self.metrics.diversity_coverage(
+                        recommendations_dict, model.item_features, feature_name
+                    )
+                    results[f'diversity_coverage_{feature_name}'] = coverage
+                    break
         
         return results
     
@@ -321,3 +371,88 @@ class Evaluator:
                 warnings.warn(f"Erro ao calcular métricas além da acurácia: {e}")
         
         return all_results
+    
+    def load_item_features(self, 
+                          features_file: Optional[str] = None,
+                          dataset_name: str = 'movielens') -> Optional[Dict[int, Dict[str, any]]]:
+        """
+        Carrega features dos itens para cálculo de diversidade e serendipidade.
+        
+        Args:
+            features_file: Caminho para arquivo de features
+            dataset_name: Nome do dataset para features padrão
+            
+        Returns:
+            Dict com features dos itens ou None
+        """
+        if features_file and os.path.exists(features_file):
+            # Carrega de arquivo personalizado
+            return self._load_features_from_file(features_file)
+        
+        # Features padrão por dataset
+        if dataset_name.startswith('movielens'):
+            return self._load_movielens_features()
+        elif dataset_name == 'lastfm':
+            return self._load_lastfm_features()
+        
+        return None
+    
+    def _load_movielens_features(self) -> Dict[int, Dict[str, any]]:
+        """Carrega features do MovieLens (gêneros dos filmes)."""
+        try:
+            import os
+            movies_file = None
+            
+            # Procura arquivo de filmes
+            for path in ['data/raw/movies.csv', 'data/raw/movies.dat', 'data/processed/movies.csv']:
+                if os.path.exists(path):
+                    movies_file = path
+                    break
+            
+            if not movies_file:
+                return {}
+            
+            if movies_file.endswith('.csv'):
+                movies_df = pd.read_csv(movies_file)
+            else:  # .dat
+                movies_df = pd.read_csv(movies_file, sep='::', engine='python', 
+                                     names=['movieId', 'title', 'genres'])
+            
+            item_features = {}
+            for _, row in movies_df.iterrows():
+                item_id = row['movieId'] if 'movieId' in row else row['item_id']
+                genres = row['genres'].split('|') if pd.notna(row['genres']) else []
+                
+                item_features[item_id] = {
+                    'genre': genres,
+                    'title': row.get('title', ''),
+                    'year': self._extract_year(row.get('title', ''))
+                }
+            
+            return item_features
+            
+        except Exception as e:
+            warnings.warn(f"Erro ao carregar features do MovieLens: {e}")
+            return {}
+    
+    def _extract_year(self, title: str) -> Optional[int]:
+        """Extrai ano do título do filme."""
+        import re
+        match = re.search(r'\((\d{4})\)', title)
+        return int(match.group(1)) if match else None
+    
+    def _load_features_from_file(self, filepath: str) -> Dict[int, Dict[str, any]]:
+        """Carrega features de arquivo CSV personalizado."""
+        try:
+            df = pd.read_csv(filepath)
+            features = {}
+            
+            for _, row in df.iterrows():
+                item_id = row['item_id']
+                features[item_id] = row.drop('item_id').to_dict()
+            
+            return features
+            
+        except Exception as e:
+            warnings.warn(f"Erro ao carregar features de {filepath}: {e}")
+            return {}

@@ -12,7 +12,7 @@ import argparse
 import yaml
 from typing import Dict, Any, List
 
-from src.data.data_loader import MovieLens100KLoader
+from src.data.data_loader import MovieLens100KLoader, MovieLens1MLoader
 from src.data.preprocessor import DataPreprocessor
 from src.data.splitter import DataSplitter
 from src.models.baseline.global_mean import GlobalMeanModel
@@ -58,6 +58,11 @@ class ExperimentRunner:
         # Carrega dados
         if dataset_name == 'movielens-100k':
             loader = MovieLens100KLoader(self.config.get('data.raw_path'))
+            data = loader.load()
+            items_data = loader.load_items()
+            dataset_info = loader.get_metadata()
+        elif dataset_name == 'movielens-1m':
+            loader = MovieLens1MLoader(self.config.get('data.raw_path'))
             data = loader.load()
             items_data = loader.load_items()
             dataset_info = loader.get_metadata()
@@ -506,9 +511,36 @@ class ExperimentRunner:
             else:
                 self.logger.warning(f"Nenhum resultado válido para {model_type}")
         
-        # Análise comparativa entre user-based e item-based
-        self._generate_knn_comparison_analysis(results, experiment_id)
-            
+    def run_svd_explorer(self, dataset_name: str):
+        """
+        Executa experimentos com SVD.
+
+        Args:
+            dataset_name: Nome do dataset
+            experiment_id: ID do experimento
+        """
+        self.logger.info(f"Executando experimentos SVD para {dataset_name}")
+
+        # Gera ID único para o conjunto de experimentos
+        experiment_id = f"knn_explorer_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # Obtém dataset
+        dataset = self.dataset_manager.get_dataset(dataset_name)
+        train_data, test_data = dataset.get_train_test_split()
+
+        # Executa experimentos
+        for model_type in ['svd']:
+            self.run_experiment(
+                model_type=model_type,
+                dataset_name=dataset_name,
+                train_data=train_data,
+                test_data=test_data,
+                experiment_id=experiment_id
+            )
+
+        # Gera relatório de análise
+        results = self.result_manager.load_experiment_results(experiment_id)
+ 
 
 def main():
     """Função principal."""
