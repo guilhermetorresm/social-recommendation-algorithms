@@ -3,6 +3,7 @@
 import sys
 import os
 
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
@@ -20,6 +21,7 @@ from src.models.baseline.popularity import PopularityModel
 from src.models.collaborative.knn_user import KNNUserModel
 from src.models.collaborative.knn_item import KNNItemModel
 from src.models.collaborative.svd import SVDModel
+from src.models.content.content_based import ContentBasedModel
 
 from src.evaluation.evaluator import Evaluator
 from src.utils.config import Config
@@ -109,6 +111,11 @@ class ExperimentRunner:
             'svd': {
                 'class': SVDModel,
                 'params': self.config.get('models.default_params.svd', {})
+            },
+            'content_based': {
+                'class': ContentBasedModel,
+                # 'params': self.config.get('models.default_params.content_based', {})
+                'params': {}
             }
         }
         
@@ -125,6 +132,7 @@ class ExperimentRunner:
                             model_name: str,
                             train_data: pd.DataFrame,
                             test_data: pd.DataFrame,
+                            items_data: pd.DataFrame,
                             dataset_name: str,
                             experiment_id: str) -> Dict[str, Any]:
         """
@@ -156,7 +164,11 @@ class ExperimentRunner:
         
         # Cria e treina modelo
         model = model_config['class'](**model_config['params'])
-        model.fit(train_data)
+        
+        fit_kwargs = {}
+        if model_name == 'content_based':
+            fit_kwargs['items_data'] = items_data  # Passa os dados dos itens para o modelo Content-Based
+        model.fit(train_data, **fit_kwargs)
         
         # Avalia modelo
         results = self.evaluator.evaluate_model(model, train_data, test_data)
@@ -200,6 +212,7 @@ class ExperimentRunner:
                     model_name=model_name,
                     train_data=train_data,
                     test_data=test_data,
+                    items_data=items_data,  # Passa os dados dos itens para o modelo Content-Based
                     dataset_name=dataset_name,
                     experiment_id=experiment_id
                 )
@@ -273,7 +286,7 @@ class ExperimentRunner:
         train_data, test_data, dataset_info, items_data = self.load_and_prepare_data(dataset_name)
         
         # Modelos baseline para executar
-        baseline_models = ['global_mean', 'popularity_count', 'popularity_rating', 'knn_user', 'knn_item', 'svd']
+        baseline_models = ['global_mean', 'popularity_count', 'popularity_rating', 'knn_user', 'knn_item', 'svd', 'content_based']
         
         results = {}
         for model_name in baseline_models:
@@ -286,6 +299,7 @@ class ExperimentRunner:
                     model_name=model_name,
                     train_data=train_data,
                     test_data=test_data,
+                    items_data=items_data,  # Passa os dados dos itens para o modelo Content-Based
                     dataset_name=dataset_name,
                     experiment_id=experiment_id
                 )
@@ -507,13 +521,45 @@ class ExperimentRunner:
         
         # Análise comparativa entre user-based e item-based
         self._generate_knn_comparison_analysis(results, experiment_id)
-            
+    
+    def run_content_based_only(self, dataset_name: str = 'movielens-100k'):
+        """
+        Executa o experimento apenas para o modelo Content-Based.
+        """
+        self.logger.info(f"--- INICIANDO EXECUÇÃO DEDICADA: CONTENT-BASED (dataset: {dataset_name}) ---")
+        experiment_id = datetime.now().strftime('%Y%m%d_%H%M%S') + "_content_based"
+        
+        # Carrega os dados, incluindo items_data, que é essencial para este modelo
+        train_data, test_data, dataset_info, items_data = self.load_and_prepare_data(dataset_name)
+        
+        model_name = 'content_based'
+        
+        self.logger.info(f"Executando modelo: {model_name}")
+        try:
+            # Chama o executor de experimento único, passando todos os dados necessários
+            result = self.run_single_experiment(
+                model_name=model_name,
+                train_data=train_data,
+                test_data=test_data,
+                items_data=items_data, # Passa os dados dos itens para o método
+                dataset_name=dataset_name,
+                experiment_id=experiment_id
+            )
+            # Imprime os resultados no log para visualização imediata
+            # self.logger.info(f"Resultados para {model_name}:")
+            # for metric, value in result['metrics'].items():
+            #     self.logger.info(f"  - {metric}: {value:.4f}")
+
+        except Exception as e:
+            self.logger.error(f"Erro ao executar o modelo {model_name}: {str(e)}")
+        
+        self.logger.info("--- EXECUÇÃO DEDICADA CONTENT-BASED CONCLUÍDA ---")
 
 def main():
     """Função principal."""
     parser = argparse.ArgumentParser(description='Executar experimentos de sistemas de recomendação')
     parser.add_argument('--mode', type=str, default='baselines',
-                       choices=['baselines', 'all', 'custom', 'knn_explorer'],
+                       choices=['baselines', 'all', 'custom', 'knn_explorer', 'content_based'],
                        help='Modo de execução')
     parser.add_argument('--dataset', type=str, default='movielens-100k',
                        help='Dataset a utilizar')
@@ -534,6 +580,8 @@ def main():
         runner.run_knn_explorer(args.dataset)
     elif args.mode == 'all':
         runner.run_all_experiments(args.dataset)
+    elif args.mode == 'content_based': # <-- ADICIONADO ESTE BLOCO
+        runner.run_content_based_only(args.dataset)
     elif args.mode == 'custom' and args.config:
         runner.run_custom_experiment(args.config)
     else:
