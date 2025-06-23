@@ -32,8 +32,9 @@ evaluation:
       - 'map_at_k'
     beyond_accuracy:
       - 'coverage'
-      - 'diversity'
+      - 'intra_list_diversity'
       - 'novelty'
+      - 'personalization'
     k_values:
       - 5
       - 10

@@ -21,7 +21,7 @@ class Config:
             'metrics': {
                 'rating_prediction': ['rmse', 'mae'],
                 'ranking': ['precision_at_k', 'recall_at_k', 'ndcg_at_k'],
-                'diversity': ['coverage', 'diversity'],
+                'beyond_accuracy': ['coverage', 'diversity', 'novelty'],
                 'k_values': [5, 10, 20]
             }
         },
