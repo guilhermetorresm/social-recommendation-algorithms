@@ -4,6 +4,7 @@ import sys
 import os
 
 
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
@@ -22,6 +23,7 @@ from src.models.collaborative.knn_user import KNNUserModel
 from src.models.collaborative.knn_item import KNNItemModel
 from src.models.collaborative.svd import SVDModel
 from src.models.content.content_based import ContentBasedModel
+from src.models.hybrid.hybrid import HybridModel
 
 from src.evaluation.evaluator import Evaluator
 from src.utils.config import Config
@@ -294,6 +296,7 @@ class ExperimentRunner:
         # Modelos baseline para executar
         baseline_models = ['global_mean', 'popularity_count', 'popularity_rating', 'knn_user', 'knn_item', 'svd', 'content_based']
         
+        
         results = {}
         for model_name in baseline_models:
             self.logger.info(f"\n{'='*50}")
@@ -560,13 +563,65 @@ class ExperimentRunner:
             self.logger.error(f"Erro ao executar o modelo {model_name}: {str(e)}")
         
         self.logger.info("--- EXECUÇÃO DEDICADA CONTENT-BASED CONCLUÍDA ---")
+        
+    def run_hybrid_experiment(self, dataset_name: str = 'movielens-100k', weight: float = 0.7):
+        """
+        Executa um experimento com um modelo híbrido combinando SVD e ContentBased.
+        """
+        self.logger.info(f"--- INICIANDO EXPERIMENTO HÍBRIDO (dataset: {dataset_name}) ---")
+        self.logger.info(f"Combinação: SVD (peso={weight}) e ContentBased (peso={1-weight:.2f})")
+        
+        experiment_id = datetime.now().strftime('%Y%m%d_%H%M%S') + f"_hybrid_w{weight}"
+        
+        # 1. Carregar dados
+        train_data, test_data, dataset_info, items_data = self.load_and_prepare_data(dataset_name)
+        
+        # 2. Instanciar os modelos base
+        svd_params = self.config.get('models.default_params.svd', {})
+        model_collab = SVDModel(**svd_params)
+        model_content = ContentBasedModel()
+        
+        # 3. Instanciar o modelo híbrido com os modelos base
+        # Certifique-se de que o nome do arquivo do modelo híbrido é hybrid_model.py e a classe HybridModel
+        # Se você nomeou o arquivo como hybrid.py, ajuste a importação no início do arquivo.
+        hybrid_model = HybridModel(model1=model_collab, model2=model_content, weight1=weight)
+        
+        # 4. Treinar o modelo híbrido (que treinará os modelos internos)
+        hybrid_model.fit(train_data, items_data=items_data)
+        
+        # 5. Avaliar <<< ESTA É A SEÇÃO CORRIGIDA >>>
+        # Utiliza o avaliador da classe (self.evaluator) em vez de criar um novo.
+        # Chama 'evaluate_model', passando o modelo e os dados, seguindo o padrão correto.
+        metrics = self.evaluator.evaluate_model(hybrid_model, train_data, test_data)
+        
+        # 6. Salvar resultados
+        # A lógica para salvar os resultados está correta, mas agora usamos 'metrics'
+        # que é o dicionário retornado por 'evaluate_model'.
+        result_path = self.result_manager.save_experiment_results(
+            experiment_id=experiment_id,
+            model_name=hybrid_model.model_name,
+            dataset_name=dataset_name,
+            metrics=metrics,
+            model_params={'weight': weight, 'model1': 'SVD', 'model2': 'ContentBased'}
+        )
+        
+        self.logger.info(f"Resultados para {hybrid_model.model_name}:")
+        for metric, value in metrics.items():
+            self.logger.info(f"  - {metric}: {value}") # O valor já pode ser um dict formatado
+            
+        self.logger.info("--- EXPERIMENTO HÍBRIDO CONCLUÍDO ---")
+        return metrics
 
 def main():
     """Função principal."""
     parser = argparse.ArgumentParser(description='Executar experimentos de sistemas de recomendação')
     parser.add_argument('--mode', type=str, default='baselines',
-                       choices=['baselines', 'all', 'custom', 'knn_explorer', 'content_based'],
+                       choices=['baselines', 'all', 'custom', 'knn_explorer', 'content_based', 'hybrid'],
                        help='Modo de execução')
+    
+    parser.add_argument('--weight', type=float, default=0.7,
+                        help='Peso para o primeiro modelo no modo híbrido')
+    
     parser.add_argument('--dataset', type=str, default='movielens-100k',
                        help='Dataset a utilizar')
     parser.add_argument('--config', type=str, default=None,
@@ -586,8 +641,10 @@ def main():
         runner.run_knn_explorer(args.dataset)
     elif args.mode == 'all':
         runner.run_all_experiments(args.dataset)
-    elif args.mode == 'content_based': # <-- ADICIONADO ESTE BLOCO
+    elif args.mode == 'content_based':
         runner.run_content_based_only(args.dataset)
+    elif args.mode == 'hybrid':
+        runner.run_hybrid_experiment(args.dataset, args.weight)
     elif args.mode == 'custom' and args.config:
         runner.run_custom_experiment(args.config)
     else:
