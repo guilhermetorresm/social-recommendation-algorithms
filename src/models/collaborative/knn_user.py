@@ -2,7 +2,7 @@
 
 import pandas as pd
 import numpy as np
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 import time
 from surprise import KNNBasic, Dataset, Reader
 from surprise.model_selection import train_test_split as surprise_split
@@ -12,7 +12,7 @@ from ..base_model import BaseRecommender
 class KNNUserModel(BaseRecommender):
     """Modelo k-NN baseado em usuários usando Surprise."""
     
-    def __init__(self, k: int = 40, min_k: int = 1, sim_metric: str = 'cosine', **kwargs):
+    def __init__(self, k: int = 20, min_k: int = 5, sim_metric: str = 'msd', **kwargs):
         """
         Inicializa o modelo k-NN user-based.
         
@@ -69,7 +69,7 @@ class KNNUserModel(BaseRecommender):
             self.item_users[item_id][user_id] = rating
         
         # Prepara dados para Surprise
-        reader = Reader(rating_scale=(1, 5))
+        reader = Reader(rating_scale=(0.5, 5.0))  # Corrige escala conforme dataset MovieLens
         data = Dataset.load_from_df(
             train_data[['user_id', 'item_id', 'rating']], 
             reader
@@ -123,7 +123,7 @@ class KNNUserModel(BaseRecommender):
     
     def get_neighbors(self, user_id: int, k: int = None) -> List[Tuple[int, float]]:
         """
-        Retorna os k vizinhos mais próximos de um usuário.
+        Retorna os k vizinhos mais próximos usando matriz de similaridade do Surprise.
         
         Args:
             user_id: ID do usuário
@@ -142,16 +142,23 @@ class KNNUserModel(BaseRecommender):
             inner_id = self.trainset.to_inner_uid(user_id)
             neighbors = self.model.get_neighbors(inner_id, k=k)
             
-            # Converte de volta para IDs originais com similaridades
+            # Obtém matriz de similaridade (mais eficiente)
+            sim_matrix = self.model.compute_similarities()
+            
+            # Converte de volta para IDs originais com similaridades da matriz
             result = []
             for neighbor_inner_id in neighbors:
                 neighbor_id = self.trainset.to_raw_uid(neighbor_inner_id)
-                # Calcula similaridade (simplificado)
-                similarity = self._calculate_similarity(user_id, neighbor_id)
-                result.append((neighbor_id, similarity))
+                similarity = sim_matrix[inner_id, neighbor_inner_id]
+                result.append((neighbor_id, float(similarity)))
             
+            # Ordena por similaridade decrescente
+            result.sort(key=lambda x: x[1], reverse=True)
             return result
-        except:
+            
+        except Exception as e:
+            # Log do erro para debug
+            print(f"Erro ao obter vizinhos para usuário {user_id}: {e}")
             return []
     
     def _calculate_similarity(self, user1: int, user2: int) -> float:
@@ -227,3 +234,44 @@ class KNNUserModel(BaseRecommender):
         predictions.sort(key=lambda x: x[1], reverse=True)
         
         return predictions[:n_items]
+    
+    def explain_recommendation(self, user_id: int, item_id: int, k: int = 5) -> Dict[str, Any]:
+        """
+        Explica por que um item foi recomendado baseado em usuários similares.
+        
+        Args:
+            user_id: ID do usuário
+            item_id: ID do item recomendado  
+            k: Número de usuários similares para explicação
+            
+        Returns:
+            Dict com explicação da recomendação
+        """
+        if not self.is_fitted:
+            raise ValueError("Modelo não foi treinado. Use fit() primeiro.")
+        
+        # Obtém usuários similares
+        similar_users = self.get_neighbors(user_id, k)
+        
+        # Encontra usuários similares que avaliaram o item
+        explanation_users = []
+        for similar_user_id, similarity in similar_users:
+            if item_id in self.user_items.get(similar_user_id, {}):
+                user_rating = self.user_items[similar_user_id][item_id]
+                explanation_users.append({
+                    'user_id': similar_user_id,
+                    'rating': user_rating,
+                    'similarity': similarity,
+                    'contribution': user_rating * similarity
+                })
+        
+        # Calcula score predito
+        predicted_score = self.predict(user_id, item_id)
+        
+        return {
+            'recommended_item': item_id,
+            'predicted_score': predicted_score,
+            'explanation_based_on': explanation_users[:3],  # Top 3 usuários para explicação
+            'total_similar_users': len(similar_users),
+            'users_who_rated_item': len(explanation_users)
+        }

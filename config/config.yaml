@@ -94,6 +94,32 @@ models:
       regularization: 0.01
       iterations: 15
       alpha: 1.0
+    
+    # Deep Learning Models
+    two_tower:
+      user_embedding_dim: 64
+      item_embedding_dim: 64
+      user_tower_units: [128, 64, 32]
+      item_tower_units: [128, 64, 32]
+      dropout_rate: 0.2
+      learning_rate: 0.001
+      epochs: 50
+      batch_size: 256
+      early_stopping_patience: 10
+      l2_reg: 0.001
+    
+    ncf:
+      embedding_dim: 64
+      mf_embedding_dim: 32
+      mlp_embedding_dim: 32
+      hidden_units: [128, 64, 32, 16]
+      dropout_rate: 0.2
+      learning_rate: 0.001
+      epochs: 50
+      batch_size: 256
+      early_stopping_patience: 10
+      l2_reg: 0.001
+      use_bias: true
 
 # Configurações de experimentos
 experiments:

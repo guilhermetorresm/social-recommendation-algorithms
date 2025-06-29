@@ -22,6 +22,8 @@ from src.models.collaborative.knn_user import KNNUserModel
 from src.models.collaborative.knn_item import KNNItemModel
 from src.models.collaborative.svd import SVDModel
 from src.models.content.content_based import ContentBasedModel
+from src.models.deep_learning.two_tower import TwoTowerModel
+from src.models.deep_learning.ncf import NCFModel
 
 from src.evaluation.evaluator import Evaluator
 from src.utils.config import Config
@@ -122,15 +124,16 @@ class ExperimentRunner:
                 'class': ContentBasedModel,
                 # 'params': self.config.get('models.default_params.content_based', {})
                 'params': {}
+            },
+            'two_tower': {
+                'class': TwoTowerModel,
+                'params': self.config.get('models.default_params.two_tower', {})
+            },
+            'ncf': {
+                'class': NCFModel,
+                'params': self.config.get('models.default_params.ncf', {})
             }
         }
-        
-        # Adicione aqui outros modelos conforme implementados
-        # Por exemplo:
-        # 'knn_user': {
-        #     'class': KNNUserModel,
-        #     'params': self.config.get('models.default_params.knn', {})
-        # }
         
         return models
     
@@ -292,7 +295,7 @@ class ExperimentRunner:
         train_data, test_data, dataset_info, items_data = self.load_and_prepare_data(dataset_name)
         
         # Modelos baseline para executar
-        baseline_models = ['global_mean', 'popularity_count', 'popularity_rating', 'knn_user', 'knn_item', 'svd', 'content_based']
+        baseline_models = ['knn_user', 'knn_item',]
         
         results = {}
         for model_name in baseline_models:
@@ -561,11 +564,126 @@ class ExperimentRunner:
         
         self.logger.info("--- EXECUÇÃO DEDICADA CONTENT-BASED CONCLUÍDA ---")
 
+    def run_deep_learning_experiments(self, dataset_name: str = 'movielens-100k'):
+        """
+        Executa experimentos apenas com modelos de Deep Learning.
+        
+        Args:
+            dataset_name: Nome do dataset
+        """
+        self.logger.info(f"--- INICIANDO EXPERIMENTOS DE DEEP LEARNING (dataset: {dataset_name}) ---")
+        experiment_id = f"deep_learning_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Carrega dados
+        train_data, test_data, dataset_info, items_data = self.load_and_prepare_data(dataset_name)
+        
+        # Modelos de deep learning para executar
+        deep_learning_models = ['two_tower', 'ncf']
+        
+        results = {}
+        for model_name in deep_learning_models:
+            self.logger.info(f"\n{'='*50}")
+            self.logger.info(f"Executando modelo Deep Learning: {model_name}")
+            self.logger.info(f"{'='*50}")
+            
+            try:
+                result = self.run_single_experiment(
+                    model_name=model_name,
+                    train_data=train_data,
+                    test_data=test_data,
+                    items_data=items_data,
+                    dataset_name=dataset_name,
+                    experiment_id=experiment_id
+                )
+                results[model_name] = result
+                
+            except Exception as e:
+                self.logger.error(f"Erro ao executar {model_name}: {str(e)}")
+                import traceback
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
+                continue
+        
+        # Gera relatório comparativo dos modelos de deep learning
+        self._generate_deep_learning_report(results, experiment_id)
+        
+        self.logger.info("--- EXPERIMENTOS DE DEEP LEARNING CONCLUÍDOS ---")
+        return results
+    
+    def _generate_deep_learning_report(self, results: Dict[str, Any], experiment_id: str):
+        """
+        Gera relatório específico para modelos de Deep Learning.
+        
+        Args:
+            results: Resultados dos experimentos
+            experiment_id: ID do experimento
+        """
+        self.logger.info("\n" + "="*70)
+        self.logger.info("RELATÓRIO COMPARATIVO - MODELOS DE DEEP LEARNING")
+        self.logger.info("="*70)
+        
+        if not results:
+            self.logger.warning("Nenhum resultado de Deep Learning para comparar.")
+            return
+        
+        # Cria DataFrame para comparação
+        comparison_data = []
+        for model_name, model_results in results.items():
+            row = {
+                'Modelo': model_name.upper(),
+                'RMSE': f"{model_results.get('rmse', 0):.4f}",
+                'MAE': f"{model_results.get('mae', 0):.4f}",
+                'Tempo Treino (s)': f"{model_results.get('training_time', 0):.2f}",
+                'Cobertura': f"{model_results.get('coverage', 0)*100:.1f}%",
+                'Novidade': f"{model_results.get('novelty', 0):.3f}"
+            }
+            
+            # Adiciona métricas de ranking @10
+            if 'ranking' in model_results and 'at_10' in model_results['ranking']:
+                at_10 = model_results['ranking']['at_10']
+                row['Precision@10'] = f"{at_10.get('precision', 0):.3f}"
+                row['Recall@10'] = f"{at_10.get('recall', 0):.3f}"
+                row['NDCG@10'] = f"{at_10.get('ndcg', 0):.3f}"
+            
+            comparison_data.append(row)
+        
+        comparison_df = pd.DataFrame(comparison_data)
+        print("\n" + comparison_df.to_string(index=False))
+        
+        # Análise específica para deep learning
+        self.logger.info(f"\n{'='*50}")
+        self.logger.info("ANÁLISE DEEP LEARNING:")
+        self.logger.info(f"{'='*50}")
+        
+        if len(results) >= 2:
+            two_tower_results = results.get('two_tower', {})
+            ncf_results = results.get('ncf', {})
+            
+            if two_tower_results and ncf_results:
+                tt_rmse = two_tower_results.get('rmse', float('inf'))
+                ncf_rmse = ncf_results.get('rmse', float('inf'))
+                
+                if tt_rmse < ncf_rmse:
+                    self.logger.info(f"🏆 Two-Tower teve melhor RMSE: {tt_rmse:.4f} vs {ncf_rmse:.4f}")
+                else:
+                    self.logger.info(f"🏆 NCF teve melhor RMSE: {ncf_rmse:.4f} vs {tt_rmse:.4f}")
+                
+                tt_time = two_tower_results.get('training_time', 0)
+                ncf_time = ncf_results.get('training_time', 0)
+                self.logger.info(f"⏱️  Tempo treino - Two-Tower: {tt_time:.2f}s, NCF: {ncf_time:.2f}s")
+        
+        # Salva relatório
+        report_path = os.path.join(
+            self.config.get('data.results_path'),
+            f'deep_learning_report_{experiment_id}.csv'
+        )
+        comparison_df.to_csv(report_path, index=False)
+        self.logger.info(f"\nRelatório Deep Learning salvo em: {report_path}")
+
 def main():
     """Função principal."""
     parser = argparse.ArgumentParser(description='Executar experimentos de sistemas de recomendação')
     parser.add_argument('--mode', type=str, default='baselines',
-                       choices=['baselines', 'all', 'custom', 'knn_explorer', 'content_based'],
+                       choices=['baselines', 'all', 'custom', 'knn_explorer', 'content_based', 'deep_learning'],
                        help='Modo de execução')
     parser.add_argument('--dataset', type=str, default='movielens-100k',
                        help='Dataset a utilizar')
@@ -586,8 +704,10 @@ def main():
         runner.run_knn_explorer(args.dataset)
     elif args.mode == 'all':
         runner.run_all_experiments(args.dataset)
-    elif args.mode == 'content_based': # <-- ADICIONADO ESTE BLOCO
+    elif args.mode == 'content_based':
         runner.run_content_based_only(args.dataset)
+    elif args.mode == 'deep_learning':
+        runner.run_deep_learning_experiments(args.dataset)
     elif args.mode == 'custom' and args.config:
         runner.run_custom_experiment(args.config)
     else:
